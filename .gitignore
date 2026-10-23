@@ -1,18 +1,102 @@
-# Build and Release Folders
-bin-debug/
-bin-release/
-[Oo]bj/
-[Bb]in/
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEXUS WEB FORGE — .gitignore
+# Auteur : Aissa Mohammedi (DGK) — NEXUS-OPEN-3.0
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# Other files and folders
-.settings/
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Executables
-*.swf
-*.air
-*.ipa
-*.apk
+# --- Virtual Environments ---
+.venv/
+venv/
+ENV/
+env/
+pythonenv/
+.conda/
+pyvenv.cfg
 
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.
+# --- Nexus Web Forge Output (generated at runtime) ---
+.nexus_web_forge/
+nexus_web_forge/
+*.zip
+PROMPT.txt
+STEPS.json
+
+# --- IDE & Editors ---
+.vscode/
+.vscode/*
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+*~
+.fleet/
+.nvim/
+*.sublime-project
+*.sublime-workspace
+
+# --- OS Files ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.fuse_hidden*
+.Trash-*
+
+# --- Secrets & Config ---
+.env
+.env.local
+.env.*.local
+secrets.json
+config.local.json
+*.pem
+*.key
+*.crt
+credentials.json
+
+# --- Temporary Files ---
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.pid
+*.log
+
+# --- Test & Coverage (if added later) ---
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
