@@ -1,0 +1,830 @@
+
+#! /usr/bin/env python3# -*- codage: utf-8 -*-
+"""
+═════════════════════════════════════════════════␐��
+🌐 NEXUS WEB FORGE v1.0 — GÉNÉRATEUR DE WEB & CODE EN LIVE
+═════════════════════════════════════════════════␐��
+Auteur : Aissa Mohammedi (DGK)
+Rôle : Interface locale qui orchestre Lovable (MCP), v0 (API) et Bolt (concept).
+Tu écris ton idea → il code en live → tu vois les fichiers s'écrire.
+Exporter complet du projet en ZIP.
+
+⚠️ IMPORTANT : Bolt.new n'a PAS d'API publique [citation:5][citation:12].
+Ce serveur utilise Lovable MCP (OAuth) et v0 API (clé) comme moteurs réels.
+Bolt est intégré comme "lien d'ouverture" vers le web de l'interface.
+═════════════════════════════════════════════════␐��
+"""
+
+Importer os
+Import sys
+Importer json
+temps d'importation
+import uuid
+Import shutil
+Importer zipfile
+Importer tempfile
+import threading
+import argparse
+demandes d'importation
+import urllib.parse
+à partir de pathlib import Path
+à partir de datetime datetime d'importation
+de l'importation de frappe Any, Dict, Optionnel, Liste
+à partir de collections import defaultdict
+à partir de http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# ═══════════════════════════════════════════␐��═══��������
+# [1] CONFIGURER LA SÉCURITÉ DE LA PLATE-FORME CROISÉE
+# ═══════════════════════════════════════════␐��═══��������
+
+VERSION = "1.0.0"
+AUTEUR = "Aissa Mohammedi (DGK)"
+HÔTE = "127.0.0.1"
+PORT = 9999
+USER_AGENT = "NexusWebForge/1.0"
+
+
+def _find_safe_work_dir():
+candidats = [
+os.getenv("NEXUS_FORGE_DIR"),
+os.path.join(tempfile.gettempdir(), "nexus_web_forge"),
+os.path.join(os.path.expanduser("~"), ".nexus_web_forge"),
+os.path.join(os.getcwd(), ".nexus_web_forge"),
+]
+pour c dans les candidats:
+si ce n'est pas c:
+Continuer
+Essayez:
+p = Chemin(c)
+p.mkdir(parents=True, exist_ok=True)
+t = p / ".wt"
+t.write_text("ok")
+t.unlink()
+return p, True
+except (PermissionError, OSError):
+Continuer
+Retour Aucun, Faux
+
+
+WORK_DIR, WORK_WRITABLE = _find_safe_work_dir()
+_MEM_PROJECTS: Dict[str, dict] = {}
+_MEM_LOCK = threading.Lock()
+
+
+classe C:
+CYAN = '\033[96m'; MAG = '\033[95m'; YEL = '\033[93m'
+GRN = '\033[92m'; RED = '\033[91m'; BLU = '\033[94m'
+RES = '\033[0m'; AUDACIEUX = '\033[1m'; DIM = '\033[2m'
+
+
+def log_ok(m): print(f" {C.GRN}[+]{C.RES} {m}")
+def log_err(m): print(f" {C.RED}[!]{ C.RES} {m}")
+def log_info(m): print(f" {C.CYAN}[*]{C.RES} {m}")
+def log_warn(m): print(f" {C.YEL}[~]{C.RES} {m}")
+
+
+# ═══════════════════════════════════════════␐��═══��������
+# [2] MOTEURS — LOVABLE MCP / V0 API / BOLT (LIEN)
+# ═══════════════════════════════════════════␐��═══��������
+
+classe LovableMCPengine:
+"""
+Client Aimable MCP.
+Auth : OAuth (navigateur) ou API Key (lov_xxx) [citation:1][citation:15].
+Outils : create_project, send_message, get_message, list_projects [citation:23].
+"""
+def __init__(self):
+self.api_key = os.getenv("LOVABLE_API_KEY")
+self.base = " https://api.lovable.dev/v1 "
+self.session = requêtes.Session()
+self.session.headers.update({
+"Utilisateur-Agent": USER_AGENT,
+"Type de contenu": "application/json",
+})
+si self.api_key:
+self.session.headers["Lovable-API-Key"] = self.api_key
+self.has_key = bool(self.api_key)
+
+def create_project(self, prompt: str) -> Dict[str, Any]:
+sinon self.has_key:
+retour {"erreur": "Loveable API key manquante",
+"hint": "Export LOVABLE_API_KEY=lov_xxx ou connecte OAuth"}
+# API lovable v1 : POST /v1/projects (simplifié — MCP en réalité)
+# Sur l'utilisation l'endpoint MCP publique si dispo
+Essayez:
+r = self.session.post(
+f"{self.base}/projects",
+json={"name": prompt[:50], "initial_message": prompt},
+timeout=120,
+)
+si r.status_code in (200, 201, 202):
+retour {"ok": True, "data": r.json()}
+retour {"erreur": f"HTTP {r.status_code}", "détail": r.text[:300]}
+sauf Exception comme e:
+retour {"erreur": str(e)[:200]}
+
+
+classe V0Engine:
+"""
+Client v0 (Vercel).
+Auth : V0_API_KEY (v0.app/settings) [citation:3][citation:17].
+API : POST /v1/chats → l'app, flux possible [citation:6][citation:24].
+"""
+def __init__(self):
+self.api_key = os.getenv("V0_API_KEY")
+self.base = " https://api.v0.dev/v1 "
+self.session = requêtes.Session()
+self.session.headers.update({
+"Utilisateur-Agent": USER_AGENT,
+"Type de contenu": "application/json",
+})
+si self.api_key:
+self.session.headers["Autorisation"] = f"Bearer {self.api_key}"
+self.has_key = bool(self.api_key)
+
+def create_chat(self, prompt: str) -> Dict[str, Any]:
+sinon self.has_key:
+retour {"erreur": "V0_API_KEY manquante",
+"hint": "Export V0_API_KEY=xxx ou https://v0.app/settings "}
+Essayez:
+r = self.session.post(
+f"{self.base}/chats",
+json={"message": prompt},
+timeout=120,
+)
+si r.status_code in (200, 201):
+données = r.json()
+retour {
+"ok": True,
+"chat_id": data.get("id") or data.get("chat", {}).get("id"),
+"preview_url": data.get("previewUrl") or data.get("url"),
+"raw": données,
+}
+retour {"erreur": f"HTTP {r.status_code}", "détail": r.text[:300]}
+sauf Exception comme e:
+retour {"erreur": str(e)[:200]}
+
+def get_preview(self, chat_id: str) -> Dict[str, Any]:
+sinon self.has_key:
+retour {"erreur": "V0_API_KEY manquante"}
+Essayez:
+r = self.session.get(f"{self.base}/chats/{chat_id}/preview", timeout=30)
+if r.status_code == 200:
+retour {"ok": True, "data": r.json()}
+return {"error": f"HTTP {r.status_code}"}
+sauf Exception comme e:
+retour {"erreur": str(e)[:200]}
+
+
+classe BoltLinkEngine:
+"""
+Bolt.new n'a PAS d'API publique [citation:5][citation:12].
+Ce moteur génère un lien direct vers bolt.new avec le prompt pré-rempli.
+"""
+@staticmethod
+def build_link(prompt: str) -> Dict[str, Any]:
+encoded = urllib.parse.quote(prompt)
+retour {
+"ok": True,
+"type": "external_link",
+"url": f"https://bolt.new/?prompt={encoded}",
+"note": "Bolt n'a pas d'API. Ce lien ouvre leur interface avec le prompt.",
+}
+
+
+# ═══════════════════════════════════════════␐��═══��������
+# [3] ORCHESTRATEUR — GÉNÉRATION LIVE + FICHIERS
+# ═══════════════════════════════════════════␐��═══��������
+
+classe ForgeOrchestrator:
+"""Orchestre la génération : crée un projet, écrit les fichiers, exporte ZIP."""
+
+def __init__(self):
+self.lovable = LovableMCPEngine()
+self.v0 = V0Engine()
+self.projects: Dict[str, dict] = {}
+self.lock = threading.RLock()
+
+def create(self, prompt: str, engine: str = "auto") -> Dict[str, Any]:
+project_id = uuid.uuid4().hex[:12]
+project = {
+"id": project_id,
+"prompt": prompt,
+"moteur": moteur,
+"created_at": datetime.now().isoformat(),
+"status": "running",
+"files": {},
+"preview_url": None,
+"raw_response": None,
+"steps": [],
+}
+with self.lock:
+self.projects[project_id] = projet
+
+# Étape 1 : choisir le moteur
+choisi = moteur
+if engine == "auto":
+if self.v0.has_key:
+chosen = "v0"
+elif self.lovable.has_key:
+choisi = "aimable"
+autre:
+chosen = "demo"
+
+project["engine"] = chosen
+self._step(project, "engine", f"Moteur choisi : {chosen}")
+
+# Étape 2 : appeler le moteur
+if chosen == "v0":
+result = self.v0.create_chat(prompt)
+if result.get("ok"):
+project["preview_url"] = result.get("preview_url")
+project["chat_id"] = result.get("chat_id")
+project["raw_response"] = result.get("raw")
+self._step(project, "api", "v0 a répondu ✓")
+autre:
+self._step(project, "api", f"v0 erreur : {result.get('error')}")
+projet["erreur"] = résultat
+
+elif choisi == "louvable":
+résultat = self.lovable.create_project(prompt)
+if result.get("ok"):
+project["raw_response"] = result.get("data")
+self._step(project, "api", "Lovable a répondu ✓")
+autre:
+self._step(project, "api", f"Lovable erreur : {result.get('error')}")
+projet["erreur"] = résultat
+
+elif choisi == "boulon":
+Résultat = BoltLinkEngine.build_link(prompt)
+project["preview_url"] = result.get("url")
+self._step(project, "api", "Lien Bolt généré")
+project["raw_response"] = result
+
+else: # demo
+self._demo_generate(project, prompt)
+
+# Étape 3 : générer les fichiers locaux (toujours)
+self._write_files(project, prompt)
+
+projet["status"] = "fait" sinon project.get("erreur") sinon "erreur"
+project["finished_at"] = datetime.now().isoformat()
+self._step(project, "done", "Projet terminé")
+
+with self.lock:
+_MEM_PROJECTS[project_id] = project
+
+return self._serialize(project)
+
+def _step(self, project: dict, key: str, msg: str):
+project["steps"].append({
+"time": datetime.now().isoformat(),
+"key": key,
+"message": msg,
+})
+
+def _demo_generate(self, project: dict, prompt: str):
+"""Mode démo : génère un site statique réel à partir du prompt."""
+self._step(project, "demo", "Mode démo — génération locale")
+# Analyse basique du prompt
+name = "nexus-app"
+for w in prompt.split():
+si len(w) > 3 et w[0].isalpha():
+nom = w.lower() + "-app"
+rupture
+
+files = {
+"index.html": self._demo_html(name, prompt),
+"style.css": self._demo_css(),
+"app.js": self._demo_js(),
+"README.md": f"# {name}\n\nGénéré par NEXUS Web Forge.\n\n> {prompt}\n",
+}
+project["files"] = files
+self._step(project, "files", f"{len(files)} fichiers générés")
+
+def _demo_html(self, name: str, prompt: str) -> str:
+return f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{name}</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+<div class="logo">⚡ {name}</div>
+<nav><a href="#">Accueil</a><a href="#">Docs</a><a href="#">Contact</a></nav>
+</header>
+<main>
+<section class="hero">
+<h1>{prompt[:80]}</h1>
+<p>Généré en direct par NEXUS Web Forge.</p>
+<button onclick="alert('Bienvenue !')">Commencer</button>
+</section>
+<section class="features">
+<div class="card"><h3>🚀 Rapide</h3><p>Construit en secondes.</p></div>
+<div class="card"><h3>🎨 Beau</h3><p>Design moderne.</p></div>
+<div class="card"><h3>📦 Exportable</h3><p>Télécharge le ZIP.</p></div>
+</section>
+</main>
+<footer><p>© {datetime.now().year} {name} — NEXUS</p></footer>
+<script src="app.js"></script>
+</body>
+</html>"""
+
+def _demo_css(self) -> str:
+return """*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a1a;color:#e0e0e0;line-height:1.6}
+header{display:flex;justify-content:space-between;align-items:center;padding:20px 40px;
+border-bottom:1px solid #1f1f3f}
+.logo{font-size:1.3rem;font-weight:700;color:#00ff9d}
+nav a{color:#8899bb;text-decoration:none;margin-left:24px;transition:.2s}
+nav a:hover{color:#00ff9d}
+.hero{text-align:center;padding:100px 20px;max-width:800px;margin:0 auto}
+.hero h1{font-size:3rem;margin-bottom:16px;
+background:linear-gradient(135deg,#00ff9d,#00d4ff);-webkit-background-clip:text;
+-webkit-text-fill-color:transparent}
+.hero p{color:#8899bb;margin-bottom:32px}
+.hero bouton{padding: 14px 40px;background:#00ff9d;color:#0a0a1a;border:none;
+border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;transition:.2s}
+.hero button:hover{transform:scale(1.05);box-shadow:0 0 30px rgba(0,255,157,.3)}
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+gap:20px;padding:40px;max-width:1000px;margin:0 auto}
+.card{background:#1a1a3e;border:1px solid #2a2a4e;border-radius:12px;padding:24px;text-align:center}
+.card h3{margin-bottom:8px;color:#00ff9d}
+.card p{color:#8899bb;font-size:.9rem}
+footer{text-align:center;padding:40px;color:#6b7b9d;font-size:.8rem;border-top:1px solid #1f1f3f}"""
+
+def _demo_js(self) -> str:
+return """console.log('⚡ NEXUS Web Forge — App active');
+document.querySelectorAll('.card').forEach((c,i)=>{
+c.style.opacity='0';c.style.transform='translateY(20px)';
+setTimeout(()=>{c.style.transition='all .5s';c.style.opacity='1';c.style.transform='none'},300+i*150);
+});"""
+
+def _write_files(self, project: dict, prompt: str):
+"""Écrit les fichiers sur disque (si possible)."""
+if not WORK_WRITABLE or not WORK_DIR:
+self._step(project, "disk", "Disque non accessible — fichiers en mémoire")
+return
+Essayez:
+pdir = WORK_DIR / project["id"]
+pdir.mkdir(parents=True, exist_ok=True)
+for fname, content in project.get("files", {}).items():
+fp = pdir / fname
+fp.parent.mkdir(parents=True, exist_ok=True)
+fp.write_text(content, encoding="utf-8")
+self._step(project, "disk", f"Fichiers écrits dans {pdir}")
+sauf Exception comme e:
+self._step(project, "disk", f"Erreur écriture : {e}")
+
+def export_zip(self, project_id: str) -> Optional[Path]:
+"""Crée un ZIP du projet."""
+with self.lock:
+projet = self.projects.get(project_id) ou _MEM_PROJECTS.get(project_id)
+if not project:
+return None
+if not WORK_WRITABLE or not WORK_DIR:
+# ZIP en mémoire
+zip_path = Path(tempfile.gettempdir()) / f"{project_id}.zip"
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+for fname, content in project.get("files", {}).items():
+zf.writestr(nom, contenu)
+zf.writestr("PROMPT.txt", project.get("prompt", ""))
+zf.writestr("STEPS.json", json.dumps(project.get("steps", []), indent=2))
+return zip_path
+pdir = WORK_DIR / project_id
+zip_path = WORK_DIR / f"{project_id}.zip"
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+for fp in pdir.rglob("*"):
+if fp.is_file():
+zf.write(fp, fp.relative_to(pdir))
+zf.writestr("PROMPT.txt", project.get("prompt", ""))
+zf.writestr("STEPS.json", json.dumps(project.get("steps", []), indent=2))
+return zip_path
+
+def _serialize(self, p: dict) -> dict:
+retour {
+"id": p["id"],
+"prompt": p["prompt"],
+"engine": p["engine"],
+"status": p["status"],
+"created_at": p["created_at"],
+"finished_at": p.get("finished_at"),
+"preview_url": p.get("preview_url"),
+"files": list(p.get("files", {}).keys()),
+"steps": p.get("steps", []),
+"error": p.get("error"),
+}
+
+
+# ═══════════════════════════════════════════␐��═══��������
+# [4] HTML UI
+# ═══════════════════════════════════════════␐��═══��������
+
+HTML = r"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NEXUS Web Forge — Générateur Live</title>
+<style>
+:root{--bg:#0a0a0a;-card:#111;--card2:#171717;--bd:#1f1f1f;--tx:#f0f0f0;--mid:#a0a0a0;--dim:#606060;
+--cy:#4c9aff;--gr:#00ff9d;--or:#f5a623;--rd:#f85149;--vi:#a855f7;
+--mono:ui-monospace,'JetBrains Mono',Menlo,monospace;--ui:-apple-system,BlinkMacSystemFont,'Inter',system-ui,sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--tx);font-family:var(--ui);font-size:14px;line-height:1.55;min-height:100vh}
+.wrap{max-width:1400px;margin:0 auto;padding:16px}
+.head{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;
+background:rgba(10,10,10,.85);backdrop-filter:blur(20px);border:1px solid var(--bd);border-radius:12px;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13px}
+.brand .icon{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#00ff9d,var(--cy));
+display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 0 20px rgba(0,255,157,.4)}
+.brand b{color:var(--tx)}.brand span{color:var(--dim)}
+.chip{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--bd);
+background:var(--card2);color:var(--mid);margin-left:4px}
+.chip.live{color:var(--gr);border-color:rgba(0,255,157,.35);background:rgba(0,255,157,.08);
+display:inline-flex;align-items:center;gap:5px}
+.chip.live::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--gr);
+box-shadow:0 0 8px var(--gr);animation:pulse 1.4s ease-in-out infinite}
+.chip.warn{color:var(--or);border-color:rgba(245,166,35,.35); arrière-plan:rgba(245,166,35,.08)}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.85)}}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px}
+.panel h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--cy);margin-bottom:12px;font-weight:600}
+textarea{width:100%;padding:12px 14px;background:var(--card2);border:1px solid var(--bd);
+border-radius:8px;color:var(--tx);font-family:var(--mono);font-size:13px;outline:none;
+min-height:100px;resize:vertical;margin-bottom:10px}
+textarea:focus{border-color:var(--cy)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.btn{padding:10px 20px;background:var(--gr);border:none;border-radius:7px;color:#000;font-weight:700;
+font-family:var(--ui);font-size:12px;cursor:pointer;transition:.15s}
+.btn:hover{background:#33ffb1}.btn:disabled{opacity:.5;cursor:wait}
+.btn.sec{background:var(--card2);color:var(--mid);border:1px solide var(--bd)}
+.btn.sec:hover{color:var(--tx)}
+.btn.or{background:var(--or);color:#000}
+.btn.or:hover{background:#ffb84d}
+select{padding:10px 14px;background:var(--card2);border:1px solid var(--bd);border-radius:7px;
+color:var(--tx);font-family:var(--mono);font-size:12px;outline:none}
+.steps{max-height:300px;overflow-y:auto;font-family:var(--mono);font-size:11px}
+.step{padding:4px 8px;border-left:2px solid var(--cy);margin:3px 0;color:var(--mid)}
+.step .t{color:var(--dim);margin-right:8px}
+.step .k{color:var(--cy);font-weight:700;margin-right:6px}
+.files{font-family:var(--mono);font-size:12px}
+.file{padding:6px 10px;background:var(--card2);border:1px solid var(--bd);border-radius:6px;
+margin:3px 0;cursor:pointer;transition:.15s;display:flex;justify-content:space-between}
+.file:hover{border-color:var(--cy)}
+.file .name{color:var(--tx)}
+.file .size{color:var(--dim);font-size:10px}
+pre{background:#000;border:1px solid var(--bd);border-radius:8px;padding:14px;overflow:auto;
+font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--gr);max-height:400px;
+white-space:pre-wrap;word-break:break-word}
+.preview{width:100%;height:400px;border:1px solid var(--bd);border-radius:8px;background:#fff;margin-top:10px}
+.empty{text-align:center;padding:30px;color:var(--dim);font-family:var(--mono);font-size:12px}
+.foot{text-align:center;margin-top:20px;padding-top:14px;border-top:1px solid var(--bd);
+font-family:var(--mono);font-size:10px;color:var(--dim)}
+.foot b{color:var(--cy)}
+.banner{margin-bottom:16px;padding:12px 16px;background:linear-gradient(135deg,rgba(0,255,157,.06),rgba(76,154,255,.06));
+border:1px solid rgba(0,255,157,.2);border-radius:10px;font-family:var(--mono);font-size:11px;color:var(--gr)}
+.banner b{color:var(--tx)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="head">
+<div class="brand">
+<div class="icon">⚡</div>
+<div><b>NEXUS</b><span> / </span>WEB FORGE<span> · LIVE</span></div>
+</div>
+<div>
+<span class="chip live">LIVE</span>
+<span class="chip">v__V__</span>
+<span class="chip" id="engineChip">moteur ?</span>
+</div>
+</div>
+
+<div class="banner">
+⚡ <b>Écris ton idée. Regarde le code s'écrire. Exporte le ZIP.</b><br>
+<span style="color:var(--dim)">Lovable MCP (OAuth) · v0 API (clé) · Bolt (lien) · Mode démo local</span>
+</div>
+
+<div class="grid">
+<!-- GAUCHE : PROMPT -->
+<div class="panel">
+<h2>💡 Ton idée</h2>
+<textarea id="prompt" placeholder="Ex: Crée un SaaS de gestion de tâches avec auth, dark mode, et dashboard..."></textarea>
+<div class="row">
+<select id="engine">
+<option value="auto">🤖 Auto (meilleur dispo)</option>
+<option value="demo">🎨 Démo locale (sans clé)</option>
+<option value="v0">▲ v0 (Vercel)</option>
+<option value="lovable">💜 Lovable</option>
+<option value="bolt">⚡ Bolt (lien)</option>
+</select>
+<button class="btn" id="forgeBtn" onclick="forge()">🚀 Forger</button>
+<button class="btn sec" onclick="clearAll()">🗑️ Reset</button>
+</div>
+<h2 style="margin-top:16px">📋 Steps</h2>
+<div class="steps" id="steps"><div class="empty">Aucune génération</div></div>
+</div>
+
+<!-- DROITE : FICHIERS + PREVIEW -->
+<div class="panel">
+<h2>📁 Fichiers</h2>
+<div class="files" id="files"><div class="empty">Aucun fichier</div></div>
+<div class="row" style="margin-top:10px">
+<button class="btn or" id="zipBtn" onclick="downloadZip()" désactivé>📦 Télécharger ZIP</button>
+<button class="btn sec" id="previewBtn" onclick="togglePreview()" disabled>👁️ Preview</button>
+</div>
+<h2 style="margin-top:16px">👁️ Preview</h2>
+<div id="previewWrap"><div class="empty">Aucune preview</div></div>
+<h2 style="margin-top:16px">📄 Contenu</h2>
+<pre id="fileContent">Sélectionne un fichier…</pre>
+</div>
+</div>
+
+<div class="foot"><b>NEXUS WEB FORGE v__V__</b> · Aissa Mohammedi (DGK) · Lovable + v0 + Bolt</div>
+</div>
+
+<script>
+(function(){
+'use strict';
+let currentProject = null;
+let currentFiles = {};
+
+function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
+
+async function refreshEngineStatus(){
+try{
+const r = await fetch('/api/engines');
+const d = await r.json();
+const c = document.getElementById('engineChip');
+const active = [];
+if(d.v0) active.push('v0');
+if(d.lovable) active.push('Lovable');
+active.push('Bolt*');
+active.push('Démo');
+c.textContent = active.join(' · ');
+}catch(e){}
+}
+
+async function forge(){
+const prompt = document.getElementById('prompt').value.trim();
+if(!prompt){alert('Écris ton idée');return;}
+const engine = document.getElementById('engine').value;
+const btn = document.getElementById('forgeBtn');
+btn.disabled = true; btn.textContent = '⏳ Forge…';
+
+document.getElementById('steps').innerHTML = '<div class="step"><span class="k">init</span> Envoi…</div>';
+document.getElementById('files').innerHTML = '<div class="empty">Génération…</div>';
+document.getElementById('fileContent').textContent = '';
+document.getElementById('previewWrap').innerHTML = '<div class="empty">Aucune preview</div>';
+
+try{
+const r = await fetch('/api/forge', {
+method:'POST', headers:{'Content-Type':'application/json'},
+body: JSON.stringify({prompt, engine})
+});
+const d = await r.json();
+currentProject = d;
+renderSteps(d.steps || []);
+renderFiles(d.files || []);
+if(d.preview_url){
+document.getElementById('previewBtn').disabled = false;
+document.getElementById('previewBtn').dataset.url = d.preview_url;
+}
+if(d.id) document.getElementById('zipBtn').disabled = false;
+if(d.error){
+renderSteps([{key:'error', message: d.error.error || JSON.stringify(d.error)}]);
+}
+}catch(e){
+renderSteps([{key:'error', message: e.message}]);
+}finally{
+btn.disabled = false; btn.textContent = '🚀 Forger';
+}
+}
+window.forge = forge;
+
+function renderSteps(steps){
+const el = document.getElementById('steps');
+if(!steps.length){el.innerHTML='<div class="empty">Aucune étape</div>';return;}
+el.innerHTML = steps.map(s=>{
+const t = (s.time||'').slice(11,19);
+return '<div class="step"><span class="t">'+esc(t)+'</span><span class="k">'+esc(s.key||'')+'</span>'+esc(s.message||'')+'</div>';
+}).join('');
+}
+
+async function renderFiles(files){
+const el = document.getElementById('files');
+if(!files.length){el.innerHTML='<div class="empty">Aucun fichier</div>';return;}
+// Charge les contenus
+CurrentFiles = {};
+for(const f of files){
+try{
+const r = await fetch('/api/file?project='+encodeURIComponent(currentProject.id)+'&name='+encodeURIComponent(f));
+const d = await r.json();
+currentFiles[f] = d.content || '';
+}catch(e){currentFiles[f] = '(erreur)';}
+}
+el.innerHTML = files.map(f=>{
+const size = (currentFiles[f]||'').length;
+return '<div class="file" onclick="showFile(\''+esc(f)+'\')"><span class="name">'+esc(f)+'</span><span class="size">'+size+' o</span></div>';
+}).join('');
+}
+
+function showFile(name){
+document.getElementById('fileContent').textContent = currentFiles[name] || '';
+}
+window.showFile = showFile;
+
+function togglePreview(){
+const btn = document.getElementById('previewBtn');
+const url = btn.dataset.url;
+const wrap = document.getElementById('previewWrap');
+if(!url){wrap.innerHTML='<div class="empty">Pas d\'URL</div>';return;}
+if(wrap.querySelector('iframe')){
+wrap.innerHTML = '<div class="empty">Preview fermée</div>';
+return;
+}
+wrap.innerHTML = '<iframe class="preview" src="'+esc(url)+'" sandbox="allow-scripts"></iframe>';
+}
+window.togglePreview = togglePreview;
+
+async function downloadZip(){
+if(!currentProject) return;
+window.location.href = '/api/zip?id=' + encodeURIComponent(currentProject.id);
+}
+window.downloadZip = downloadZip;
+
+function clearAll(){
+document.getElementById('prompt').value = '';
+document.getElementById('steps').innerHTML = '<div class="empty">Aucune génération</div>';
+document.getElementById('files').innerHTML = '<div class="empty">Aucun fichier</div>';
+document.getElementById('fileContent').textContent = 'Sélectionne un fichier…';
+document.getElementById('previewWrap').innerHTML = '<div class="empty">Aucune preview</div>';
+document.getElementById('zipBtn').disabled = true;
+document.getElementById('previewBtn').disabled = true;
+currentProject = null; currentFiles = {};
+}
+window.clearAll = clearAll;
+
+refreshEngineStatus();
+})();
+</script>
+</body>
+</html>"""
+
+
+# ═══════════════════════════════════════════␐��═══��������
+# [5] HANDLER HTTP
+# ═══════════════════════════════════════════␐��═══��������
+
+class Handler(BaseHTTPRequestHandler):
+server_version = "NexusWebForge/" + VERSION
+protocol_version = "HTTP/1.1"
+orchestrator: ForgeOrchestrator = None
+
+def log_message(self, *a): pass
+
+def _send(self, code, body, ctype="text/html; charset=utf-8", extra=None):
+if isinstance(body, str): body = body.encode("utf-8")
+Essayez:
+self.send_response(code)
+self.send_header("Content-Type", ctype)
+self.send_header("Content-Length", str(len(body)))
+self.send_header("Access-Control-Allow-Origin", "*")
+self.send_header("Cache-Control", "no-cache")
+if extra:
+for k,v in extra.items(): self.send_header(k, v)
+self.end_headers()
+self.wfile.write(body)
+except (BrokenPipeError, ConnectionResetError): pass
+
+def _json(self, code, obj):
+try: body = json.dumps(obj, ensure_ascii=False, default=str)
+except Exception: body = "{}"
+self._send(code, body, "application/json; charset=utf-8")
+
+def _read_json(self):
+Essayez:
+n = int(self.headers.get("Content-Length", 0))
+if n == 0: return {}
+return json.loads(self.rfile.read(n).decode("utf-8"))
+except Exception: return {}
+
+def do_GET(self):
+parsed = urllib.parse.urlparse(self.path)
+path = parsed.path
+q = urllib.parse.parse_qs(parsed.query)
+
+if path in ("/", "/index.html"):
+return self._send(200, HTML.replace("__V__", VERSION))
+
+si chemin == "/api/moteurs":
+return self._json(200, {
+"v0": self.orchestrator.v0.has_key,
+"lovable": self.orchestrator.lovable.has_key,
+"bolt": False, # pas d'API
+"demo": True,
+})
+
+if path == "/api/file":
+pid = q.get("project", [None])[0]
+name = q.get("name", [None])[0]
+if not pid or not name:
+return self._json(400, {"error": "project et name requis"})
+project = self.orchestrator.projects.get(pid) or _MEM_PROJECTS.get(pid)
+if not project:
+return self._json(404, {"error": "projet introuvable"})
+content = project.get("files", {}).get(name, "")
+return self._json(200, {"name": name, "content": content})
+
+if path == "/api/zip":
+pid = q.get("id", [None])[0]
+if not pid:
+return self._json(400, {"error": "id requis"})
+zip_path = self.orchestrator.export_zip(pid)
+if not zip_path or not zip_path.exists():
+return self._json(404, {"error": "zip introuvable"})
+data = zip_path.read_bytes()
+return self._send(200, data, "application/zip",
+{"Content-Disposition": f'attachment; filename="{pid}.zip"'})
+
+return self._json(404, {"error": "not found"})
+
+def do_POST(self):
+parsed = urllib.parse.urlparse(self.path)
+if parsed.path == "/api/forge":
+payload = self._read_json()
+prompt = (payload.get("prompt") or "").strip()
+engine = (payload.get("engine") or "auto").strip()
+if not prompt:
+return self._json(400, {"error": "prompt requis"})
+result = self.orchestrator.create(prompt, engine)
+return self._json(200, result)
+return self._json(404, {"error": "not found"})
+
+
+class Server(ThreadingHTTPServer):
+daemon_threads = True
+allow_reuse_address = True
+
+
+# ═══════════════════════════════════════════␐��═══��������
+# [6] MAIN
+# ═══════════════════════════════════════════␐��═══��������
+
+def find_free_port(pref):
+import socket
+for p in range(pref, pref + 20):
+Essayez:
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind((HOST, p))
+return p
+except OSError: continue
+return pref
+
+
+def main():
+ap = argparse.ArgumentParser(description="Nexus Web Forge")
+ap.add_argument("--port", type=int, default=PORT)
+args = ap.parse_args()
+
+orch = ForgeOrchestrator()
+Handler.orchestrator = orch
+port = find_free_port(args.port)
+
+print(f"\n{C.CYAN}{C.BOLD}╔══════════════════════════════════════════════════════════════════════╗")
+print(f"║ ⚡ NEXUS WEB FORGE v{VERSION:<47} ║")
+print(f"╚══════════════════════════════════════════════════════════════════════╝{C.RES}")
+print(f"\n {C.DIM}Auteur :{C.RES} {AUTEUR}")
+print(f" {C.DIM}WorkDir :{C.RES} {WORK_DIR if WORK_WRITABLE else '(mémoire uniquement)'}")
+
+print(f"\n {C.BOLD}Moteurs :{C.RES}")
+print(f" {C.GRN if orch.v0.has_key else C.YEL} v0 {C.RES} {'✓ V0_API_KEY' if orch.v0.has_key else '✗ manquante'}")
+print(f" {C.GRN if orch.lovable.has_key else C.YEL} Lovable {C.RES} {'✓ LOVABLE_API_KEY' if orch.lovable.has_key else '✗ manquante (OAuth via MCP)'}")
+print(f" {C.GRN} Bolt {C.RES} lien externe (pas d'API publique)")
+print(f" {C.GRN} Démo {C.RES} toujours disponible (local)")
+
+print(f"\n {C.GRN}→ http://{HOST}:{port}/{C.RES}\n")
+
+sinon orch.v0.has_key et pas orch.lovable.has_key:
+print(f" {C.YEL}⚠ Ole utilisateur d'API clé — mode DÉMO actif.{ C.RES}")
+print(f" {C.DIM} → v0 : export V0_API_KEY=xxx (v0.app/settings){C.RES}")
+print(f" {C.DIM} → Avorable: export LOVABLE_API_KEY=lov_xxx{C.RES}\n")
+
+print(f" {C.DIM}Ctrl+C pour stopt{C.RES}\n")
+
+Essayez:
+srv = Serveur ((HÔTE, port), Gestionnaire)
+srv.serve_forever()
+sauf clavierInterruption:
+print(f"\n{C.YEL}👋 Arrêt{C.RES}\n")
+Retour 0
+
+
+si __name__ == "__main__":
+sys.exit(main())
